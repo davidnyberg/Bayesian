@@ -1,0 +1,127 @@
+---
+title: "Lab2"
+author: "David Nyberg"
+date: "4/21/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assignement 1
+
+a) To determine the model parameters I started by simulating draws from the joint prior of scaled inv chi squared using given parameters of V0 = 4 and s^2 = 1. Using the same method of simulating from lab1 the new simulated variance can be used to predict B's using mvnorm and prior hyperparameters. After tweaking the hyperparameters a little bit the resulting plot seems to make sense with my prior knowledge of temperature in Sweden and matching fairly well the data points, the early months of the year seem to have different spread so I choose something in between the differences. 
+
+```{r echo=FALSE}
+library(mvtnorm)
+temps <- read.table("TempLinkoping.txt", header = TRUE)
+u <- (c(-12,125,-120))
+n <- length(temps$temp)
+v0 <- 5
+s2 <- 10
+omega <- diag(3) * 0.1
+
+#from lab1 and lecture 5 
+sigmasquared <- (v0 * s2)/rchisq(1000, v0)
+
+betas <- matrix(nrow = 1000, ncol = 3)
+
+#b|theta ~ N(u, sigmasq * inverse omega)
+#rmvnorm(10, u, sigmasquared[1] * omega)
+
+#sample 1000 new betas store into matrix
+for(x in 1:1000){
+  betas[x,] <- rmvnorm(1, u, sigmasquared[x] * omega)
+}
+
+#plots 50 of the regression lines
+plot(temps$time, temps$temp, main = "Temperature in Linkoping 2018", ylab = "Temp", xlab = "Time of Year")
+for(x in 1:50){
+lines(temps$time, betas[x,1] + (betas[x,2] * temps$time) + (betas[x,3] * temps$time^2) )
+}
+
+#b)
+#%*% matrix multiplication, solve takes inverse, t is a transpose
+X = matrx(rep(1,length(temps$time)),temps$time,temps$time^2)
+B = solve(t(X) %*% X) %*% t(X)%*%temps$temp
+u_n <- solve(t(X) %*% X + omega) %*% ((t(X) %*% X %*% B + omega %*% u))
+omega_n <- (t(X) %*% X + omega)
+v_n = v0 + length(temps$time)
+sigma_n = ((s2 * v0)  + c((t(temps$temp)%*%temps$temp + t(u)%*%omega%*%u - t(u_n)%*%omega_n%*%u_n)) ) / v_n
+
+posterior <- 
+```
+
+b) The following four histograms show the density of the parameters.
+```{r echo=FALSE}
+#plot 4 histograms, b0,b1,b2, sigma2
+hist(betas[,1],50)
+hist(betas[,2], 50)
+hist(betas[,3], 50)
+hist(sigmasquared, 200)
+```
+
+Computing the 95% equal tail interval using all the sampled betas, it is possible to select the interval where 95% of the predictions will lie. Also showing the median line shows a fairy good fit of the model with variation at lower x values being the difficult area to match. This interval captures a good amount of data, but it is not super accurate in the early X values. It should theoretically contain 95% of the data points. 
+
+```{r echo=FALSE}
+plot(temps$time, temps$temp, main = "Median Linkoping Temperature with 95% equal tail interval", xlab = "Time of Year", ylab = "Temperature")
+lines(temps$time, median(betas[,1]) + (median(betas[,2]) * temps$time) + (median(betas[,3]) * temps$time^2) ,col = "red")
+lines(temps$time, quantile(betas[,1], 0.025) + (quantile(betas[,2], 0.025) * temps$time) + (quantile(betas[,3], 0.025) * temps$time^2) )
+lines(temps$time, quantile(betas[,1], 0.975) + (quantile(betas[,2], 0.975) * temps$time) + (quantile(betas[,3], 0.975) * temps$time^2) )
+
+
+#quantile(betas[,1], c(0.25, .975))
+#quantile(betas[,2], c(0.25, .975))
+#quantile(betas[,3], c(0.25, .975))
+```
+
+c) Highest expected temperature is at the peak of the curve, this point is where the derivative is equal to zero. By taking the derivative and solving we get B0 + B1 * time + B2 * time^2 = 0. Which equals time = -B1/(2 * B2)
+
+```{r echo=FALSE}
+#find xbar - max
+#formula 0 = median(betas[,1]) + (median(betas[,2]) * temps$time) + (median(betas[,3]) * temps$time^2)
+time = -betas[,2]/(2*betas[,3]) #list of 1000 times...
+hist(time, 100)
+
+plot(temps$time, temps$temp)
+abline(v=max(time))
+```
+d) Polynomial model of order 7, this would introduce polynomial terms that would add curvature to our model, but to avoid overfitting we would need to make these new terms not add any information.
+```{r}
+library(mvtnorm)
+temps <- read.table("TempLinkoping.txt", header = TRUE)
+u <- t(c(-12,125,-120,9,9,9))
+n <- length(temps$temp)
+v0 <- 5
+s2 <- 10
+omega <- diag(6) * 0.1
+
+#from lab1 and lecture 5 
+sigmasquared <- (v0 * s2)/rchisq(1000, v0)
+
+betas <- matrix(nrow = 1000, ncol = 6)
+
+#b|theta ~ N(u, sigmasq * inverse omega)
+#rmvnorm(10, u, sigmasquared[1] * omega)
+
+#sample 1000 new betas store into matrix
+for(x in 1:1000){
+  betas[x,] <- rmvnorm(1, u, sigmasquared[x] * omega)
+}
+
+#plots 50 of the regression lines
+plot(temps$time, temps$temp, main = "Temperature in Linkoping 2018", ylab = "Temp", xlab = "Time of Year")
+for(x in 1:50){
+lines(temps$time, betas[x,1] + (betas[x,2] * temps$time) + (betas[x,3] * temps$time^2) + (betas[x,4] * temps$time^3) + (betas[x,5] * temps$time^4) )
+}
+```
+
+## Assignment 2
+a) Logistic regression
+```{r}
+women = read.table("WomenWork.dat.txt", header=TRUE)
+
+```
+
+
