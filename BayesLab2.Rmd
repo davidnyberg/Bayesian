@@ -11,20 +11,21 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Assignement 1
 
-a) To determine the model parameters I started by simulating draws from the joint prior of scaled inv chi squared using given parameters of V0 = 4 and s^2 = 1. Using the same method of simulating from lab1 the new simulated variance can be used to predict B's using mvnorm and prior hyperparameters. After tweaking the hyperparameters a little bit the resulting plot seems to make sense with my prior knowledge of temperature in Sweden and matching fairly well the data points, the early months of the year seem to have different spread so I choose something in between the differences. 
+a) To determine the model parameters I started by simulating draws from the joint prior of scaled inv chi squared using given parameters of V0 = 4 and s^2 = 1. Using the same method of simulating from lab1 the new simulated variance can be used to predict Betas's using mvnorm and prior hyperparameters. After tweaking the hyperparameters a little bit the resulting plot seems to make sense with my prior knowledge of temperature in Sweden and matching fairly well the data points, the early months of the year seem to have different spread so I chose something in between as these regression curves could not fit this data perfectly. 
 
 ```{r echo=FALSE}
 library(mvtnorm)
 temps <- read.table("TempLinkoping.txt", header = TRUE)
-u <- (c(-12,125,-120))
-n <- length(temps$temp)
-v0 <- 5
-s2 <- 10
-omega <- diag(3) * 0.1
+temperatures <- temps$temp
+times <- temps$time
+u <- c(-5,85,-85)
+n <- length(times)
+v0 <- 4
+s2 <- 1
+omega <- diag(3) * 0.5
 
 #from lab1 and lecture 5 
 sigmasquared <- (v0 * s2)/rchisq(1000, v0)
-
 betas <- matrix(nrow = 1000, ncol = 3)
 
 #b|theta ~ N(u, sigmasq * inverse omega)
@@ -32,96 +33,186 @@ betas <- matrix(nrow = 1000, ncol = 3)
 
 #sample 1000 new betas store into matrix
 for(x in 1:1000){
-  betas[x,] <- rmvnorm(1, u, sigmasquared[x] * omega)
+  betas[x,] <- rmvnorm(1, u, sigmasquared[x] * solve(omega))
 }
 
-#plots 50 of the regression lines
+#plots 100 of the regression lines
 plot(temps$time, temps$temp, main = "Temperature in Linkoping 2018", ylab = "Temp", xlab = "Time of Year")
-for(x in 1:50){
+for(x in 1:100){
 lines(temps$time, betas[x,1] + (betas[x,2] * temps$time) + (betas[x,3] * temps$time^2) )
 }
-
-#b)
-#%*% matrix multiplication, solve takes inverse, t is a transpose
-X = matrx(rep(1,length(temps$time)),temps$time,temps$time^2)
-B = solve(t(X) %*% X) %*% t(X)%*%temps$temp
-u_n <- solve(t(X) %*% X + omega) %*% ((t(X) %*% X %*% B + omega %*% u))
-omega_n <- (t(X) %*% X + omega)
-v_n = v0 + length(temps$time)
-sigma_n = ((s2 * v0)  + c((t(temps$temp)%*%temps$temp + t(u)%*%omega%*%u - t(u_n)%*%omega_n%*%u_n)) ) / v_n
-
-posterior <- 
 ```
 
-b) The following four histograms show the density of the parameters.
+b) Using the information about how to simulate from a joint prior distribution from lecture 5, 
+
+```{r echo=FALSE}
+#b) lecture 5
+#solve returns inverse of matrix, t is a transpose
+X <- matrix(c(c(rep(1,n)),times,times^2), nrow = 365, ncol = 3)
+B <- solve(t(X) %*% X) %*% t(X)%*%temperatures
+u_n <- solve(t(X) %*% X + omega) %*% ((t(X) %*% X %*% B + omega %*% u))
+omega_n <- (t(X) %*% X) + omega
+v_n <- v0 + n
+sigma_n <- ((s2 * v0)  + (t(temperatures)%*%temperatures + t(u)%*%omega%*%u - t(u_n)%*%omega_n%*%u_n)) / v_n
+sigma_n <- as.vector(sigma_n)
+#simulate from the posterior
+new_sigm_squared <- (v_n * sigma_n)/rchisq(1000, v_n)
+new_betas <- matrix(nrow = 1000, ncol = 3)
+#new_betas_tight <- matrix(nrow = 1000, ncol = 3)
+
+for(x in 1:1000){
+  #based off lecture 5, only omege inversed
+  new_betas[x,] <- rmvnorm(1, u_n, new_sigm_squared[x] * solve(omega_n))
+  #new_betas_tight[x,] <- rmvnorm(1, u_n, solve(new_sigm_squared[x] * (omega_n)))
+}
+```
+
+The following four histograms show the marginal posteriors of the parameters B1, B2, B3, and Sigma^2.
+
 ```{r echo=FALSE}
 #plot 4 histograms, b0,b1,b2, sigma2
-hist(betas[,1],50)
-hist(betas[,2], 50)
-hist(betas[,3], 50)
-hist(sigmasquared, 200)
+hist(new_betas[,1],50)
 ```
 
-Computing the 95% equal tail interval using all the sampled betas, it is possible to select the interval where 95% of the predictions will lie. Also showing the median line shows a fairy good fit of the model with variation at lower x values being the difficult area to match. This interval captures a good amount of data, but it is not super accurate in the early X values. It should theoretically contain 95% of the data points. 
 
 ```{r echo=FALSE}
-plot(temps$time, temps$temp, main = "Median Linkoping Temperature with 95% equal tail interval", xlab = "Time of Year", ylab = "Temperature")
-lines(temps$time, median(betas[,1]) + (median(betas[,2]) * temps$time) + (median(betas[,3]) * temps$time^2) ,col = "red")
-lines(temps$time, quantile(betas[,1], 0.025) + (quantile(betas[,2], 0.025) * temps$time) + (quantile(betas[,3], 0.025) * temps$time^2) )
-lines(temps$time, quantile(betas[,1], 0.975) + (quantile(betas[,2], 0.975) * temps$time) + (quantile(betas[,3], 0.975) * temps$time^2) )
-
-
-#quantile(betas[,1], c(0.25, .975))
-#quantile(betas[,2], c(0.25, .975))
-#quantile(betas[,3], c(0.25, .975))
+hist(new_betas[,2], 50)
 ```
 
-c) Highest expected temperature is at the peak of the curve, this point is where the derivative is equal to zero. By taking the derivative and solving we get B0 + B1 * time + B2 * time^2 = 0. Which equals time = -B1/(2 * B2)
+
+```{r echo=FALSE}
+hist(new_betas[,3], 50)
+```
+
+
+```{r echo=FALSE}
+hist(new_sigm_squared, 50)
+```
+
+Computing the 95% equal tail credible interval using all the posterior betas, it is possible to select the interval where 95% of the predictions will lie. Also showing the median line in red shows a fairy good fit of the model with the exception of lower values of time that do not follow a nice fit.
+
+The wider interval almost makes sense because of the formula for a quadratic equation. At higher time values the range will increase due increasing the time value multiplied with the beta value grows with time. Also can explain the tight interval in low values of time with the same logic.
+
+I think that 95% of the data should lie in this interval if we are looking at a perfect fit. But this interval is based off the simulated model which is too basic to capture the complexity of this model.
+
+```{r echo=FALSE}
+plot(times, temperatures, main = "Median Linkoping Temperature with 95% equal tail interval on Betas", xlab = "Time of Year", ylab = "Temperature")
+lines(times, median(new_betas[,1]) + (median(new_betas[,2]) * temps$time) + (median(new_betas[,3]) * temps$time^2) ,col = "red")
+lines(times, quantile(new_betas[,1], 0.025) + (quantile(new_betas[,2], 0.025) * times) + (quantile(new_betas[,3], 0.025) * times^2) )
+lines(times, quantile(new_betas[,1], 0.975) + (quantile(new_betas[,2], 0.975) * times) + (quantile(new_betas[,3], 0.975) * times^2) )
+
+#a <- c()
+#a[x] <- quantile((new_betas[,1] + new_betas[,2] * temps$time[x] + new_betas[,3] * temps$time[x]^2), 0.025)
+#quantile(new_betas[,1], c(0.25, .975))
+#quantile(new_betas[,2], c(0.25, .975))
+#quantile(new_betas[,3], c(0.25, .975))
+```
+
+c) Highest expected temperature is at the peak of the curve, this point is where the derivative is equal to zero. By taking the derivative and solving we get B0 + B1 * time + B2 * time^2 = 0. Which equals time = -B1/(2 * B2), using this equation the result is the time that the max temperature occurs. Therefore in the plot we can see around 0.54 which is around the middle of June if we interperate that as about halfway through the year. 
 
 ```{r echo=FALSE}
 #find xbar - max
 #formula 0 = median(betas[,1]) + (median(betas[,2]) * temps$time) + (median(betas[,3]) * temps$time^2)
-time = -betas[,2]/(2*betas[,3]) #list of 1000 times...
+time = -new_betas[,2]/(2*new_betas[,3]) #list of 1000 times...
 hist(time, 100)
-
-plot(temps$time, temps$temp)
-abline(v=max(time))
 ```
-d) Polynomial model of order 7, this would introduce polynomial terms that would add curvature to our model, but to avoid overfitting we would need to make these new terms not add any information.
-```{r}
-library(mvtnorm)
-temps <- read.table("TempLinkoping.txt", header = TRUE)
-u <- t(c(-12,125,-120,9,9,9))
-n <- length(temps$temp)
-v0 <- 5
-s2 <- 10
-omega <- diag(6) * 0.1
 
-#from lab1 and lecture 5 
-sigmasquared <- (v0 * s2)/rchisq(1000, v0)
+d) Polynomial model of order 7, this would introduce polynomial terms that would add curvature to our model, but to avoid overfitting we would need to have these added terms have some amount of variance and low overall weight in the model so they are not learning the training data, and be able to perform on new data. This could be done by having close to zero beta values, as observed in the credible interval above these higher polynomial terms influence greatly. 
 
-betas <- matrix(nrow = 1000, ncol = 6)
-
-#b|theta ~ N(u, sigmasq * inverse omega)
-#rmvnorm(10, u, sigmasquared[1] * omega)
-
-#sample 1000 new betas store into matrix
-for(x in 1:1000){
-  betas[x,] <- rmvnorm(1, u, sigmasquared[x] * omega)
-}
-
-#plots 50 of the regression lines
-plot(temps$time, temps$temp, main = "Temperature in Linkoping 2018", ylab = "Temp", xlab = "Time of Year")
-for(x in 1:50){
-lines(temps$time, betas[x,1] + (betas[x,2] * temps$time) + (betas[x,3] * temps$time^2) + (betas[x,4] * temps$time^3) + (betas[x,5] * temps$time^4) )
-}
-```
 
 ## Assignment 2
 a) Logistic regression
-```{r}
-women = read.table("WomenWork.dat.txt", header=TRUE)
 
+With the help of Mattias' code the posterior logistic function was implemented, and after calling an optimizer the results are printed below.
+From the result and comparing it to the result from a glm function we can see similar results meaning the model is reasonable.
+
+```{r echo=FALSE}
+women = read.table("WomenWork.dat.txt", header=TRUE)
+y <- as.vector(women[,1])
+x <- as.matrix(women[,2:9])
+covNames <- names(women)[2:9];
+
+n_params <- 8 
+tau <- 10
+
+#Prior
+u <- as.vector(rep(0,n_params))
+sigma <- tau^2*diag(n_params)
+#lecture 6
+LogPostLogistic <- function(betaVect,y,X,mu,Sigma){
+  nPara <- length(betaVect)
+  #print(nPara) - 8 parameters of 0s as initial betas
+  linPred <- X%*%betaVect
+                                      
+  logLik <- sum( linPred*y -log(1 + exp(linPred)))
+  if (abs(logLik) == Inf) logLik = -20000; # Likelihood is not finite, stear the optimizer away from here!
+  logPrior <- dmvnorm(betaVect, matrix(0,nPara,1), Sigma, log=TRUE)
+  #returning posterior
+  return(logLik + logPrior)
+}
+
+initVal <- as.vector(rep(0,dim(x)[2]))
+#initVal = 8 parameters
+OptimResults <- optim(initVal,LogPostLogistic,gr=NULL,y,x,u,sigma,method=c("BFGS"),control=list(fnscale=-1),hessian=TRUE)
+names(OptimResults$par) <- covNames
+print('The posterior mode is:')
+OptimResults$par
+approxPostStd <- sqrt(diag(-solve(OptimResults$hessian))) # Computing approximate standard deviations.
+names(approxPostStd) <- covNames
+print('The approximate posterior standard deviation is:')
+approxPostStd
+
+#glmModel <- glm(Work ~ 0+., data = women, family = binomial)
+#summary(glmModel)
+
+beta_t <- OptimResults$par
+#hessian matrix
+print('The hessian 8x8 matrix: ')
+j_inv <- -solve(OptimResults$hessian)
+j_inv
+```
+
+This plot shows the beta histogram from the parameter NSmallChild and it shows also from the red lines the 95% credible interval of (-2.13, -0.71). When looking at the results we can see that the coefficiant for the number of children is the greatest, meaning it has the most influence in the model. This can be interpreted as saying the number of children a women has plays a big role in if she is working or not.
+
+```{r echo=FALSE}
+betas <- rmvnorm(5000, beta_t, j_inv)
+#95% credible interval
+hist(betas[,7], 50, main="NSmallChild and 95% credible interval")
+abline(v = quantile(betas[,7], 0.025), col = 'red')
+abline(v = quantile(betas[,7], 0.95), col = 'red')
+#quantile(betas[,7], c(0.025,0.95))
 ```
 
 
+b) Using the original equation for logistic regression in the prediction for this new women to create a function to calculate the predictive distribution. The mean of this distribution is around 23%.
+
+```{r echo=FALSE}
+# b
+women_params <- c(1, 10, 8, 10, 1, 40, 1, 1)
+#pr(1 | x) = exp(xT*b)/1+exp(xT*b)
+
+does_this_person_work <- function(betas, target){
+  # target 1x8 betas 8 x 5000 = 1 x 5000
+  temp <- target %*% t(betas)
+  prob <- exp(temp) / (1 + exp(temp))
+  return(prob)
+}
+
+#betas from part a (no reason to sample new ones with exact same paramters...)
+prediction <- does_this_person_work(betas, women_params)
+plot(density(prediction), main = "Predictive distribution if woman works")
+#mean(prediction)
+```
+
+c) Now if there are 10 women with the same information as part b, a sum of these 10 bernoulli variables would be a binomial distribution with 10 different unique values. By looking at the results from this distribution comparing with the previous we can see that this results in grouping towards the same distribution. 
+
+```{r echo=FALSE}
+#c
+#1000 binomial samples of 10 women, size = 10
+hist(rbinom(1000, 10, prediction), 100)
+```
+
+
+```{r ref.label=knitr::all_labels(), echo = T, eval=F}
+
+```
