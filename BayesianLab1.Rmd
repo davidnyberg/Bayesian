@@ -11,8 +11,8 @@ a) Drawing random numbers from our posterior $\theta$|y ~ Beta($\alpha$ + s, $\b
 
 ```{r echo=FALSE}
 poster100 <- rbeta(100, 2+5, 2+15)
-poster1000 <- rbeta(1000, 2+5, 2+15) 
-poster100000 <- rbeta(100000, 2+5, 2+15) 
+poster1000 <- rbeta(1000, 2+5, 2+15)
+poster100000 <- rbeta(100000, 2+5, 2+15)
 hist(poster100, 50, main = "100 Draws", xlab="")
 ```
 
@@ -25,13 +25,23 @@ hist(poster100000, 50, main = "100000 Draws", xlab="")
 
 a <- 2 + 5
 b <- 2 + 15
-standard_deviation <- (a*b) / ((a+b)^2 * (a+b+1) ) 
+standard_deviation <- sqrt((a*b) / ((a+b)^2 * (a+b+1) )) 
 true_mean <- a / (a + b)
 ```
 
-Calculating the true standard deviation and the true mean we can see the results from 100000 draws looks very accurate in comparison to the true values.
+Calculating the true standard deviation and the true mean we can see the results from 100000 draws looks very accurate in comparison to the true values. In the plot we can see a convergence of the values as the number of samples increases, these values are approaching the true values printed below. 
 
 ```{r echo = FALSE}
+means <- c()
+std_dev <- c()
+for (i in 1:1000){
+  posteriordraws <- rbeta(i, a, b) 
+  means[i] <- mean(posteriordraws)
+  std_dev[i] <- sd(posteriordraws)
+}
+plot(1:1000, means, type = 'l', ylim = c(0.05,0.4), main = "Convergence of sample mean and std deviation", ylab = "Std_dev(red), mean(blue)", col = "blue", xlab = "# samples")
+lines(std_dev, col = "red")
+
 print(paste0("True standard deviation: ", standard_deviation))
 print(paste0("True mean: ", true_mean))
 ```
@@ -66,13 +76,12 @@ u <- 3.7
 n <- length(data)
 t <- sum((log(data) - u) ^ 2) / n
 #simulating variance from an inverse chi squared distribtuition
-sigmasquared <- ((n-1)*t)/rchisq(10000, n-1)
+sigmasquared <- (n*t)/rchisq(10000, n)
 
-library(LaplacesDemon)
-theoretical <- rinvchisq(1000, n, scale = t)
-
+#pdf for scaled inv chi square in wikipedia, seems different than course page pdf , seq is range of x's we want(0-1 from sigmasquareds), degrees of freedom = n 
+theoretical <- (((t * n/2)^(n/2)) / (gamma(n/2)) )*( exp((-n*t) / (seq(0,1, .001) * 2)) / seq(0 , 1, .001) ^ (1 + n/2) )
 hist(sigmasquared, 100, xlim=c(0,1), freq = FALSE)
-lines(density(theoretical))
+lines(seq(.001,1,.001), theoretical[2:1001])
 ```
 
 b) Using the gini coefficient calculation with the previous results as input the following plot shows the density of the gini coefficient.
@@ -86,8 +95,8 @@ lines(density(G))
 
 c) 
 The 90% equal tail credible interval for G: (0.158,0.346) at 5% and 95% respectively. 
-Kernel density estimate of 90% highest posterior density: (0.144, 0.323) at 5% and 95% respectively. 
-Plotted below is the comparison of the two interval. Red is equal tail which we can see is slightly shifted to the right when compared to the density interval which captures more of the 'peak' area. 
+Kernel density estimate of 90% highest posterior density: (0.159, 0.337) at 5% and 95% respectively. 
+Plotted below is the comparison of the two interval. The two intervals are almost identical. 
 
 ```{r echo=FALSE}
 #c
@@ -95,24 +104,35 @@ equal_tail <- quantile(G, c(.05,.95))
 
 #kernel density estimate
 gdens <- density(G)
+#plot(gdens)
 
-library(HDInterval)
-#could not make code below equal to package results...
-hdi <- hdi(gdens, 0.90)
+#source: https://stats.stackexchange.com/questions/240749/how-to-find-95-credible-interval
 
-sort_g <- sort(gdens$y, decreasing = TRUE)
-#plot(sort_g)
+#sort_gy <- sort(gdens$y, decreasing = TRUE)
+test <- cumsum(gdens$y) / sum(gdens$y)
+low <- gdens$x[which(test >= .05)][1]
+#sort_gx <- sort(gdens$x, decreasing = FALSE)
+hi <- gdens$x[which(test >= .95)][1]
+
+#sort_g <- normalize(gdens$y)
+
+#total_sum <- sum(sort_gy)
+#sum of a = 1
+#a <- sort_gy / total_sum
+#crit <- a[which(cumsum(a) >= 0.95)[1]] * total_sum
+  
 #choose 90% of data from the density
-#a <- gdens$y[gdens$y < .95 & gdens$y > .05 ]
-#b <- gdens$y[gdens$y < quantile(gdens$y, .95) & gdens$y > quantile(gdens$y,.05) ]
-options(scipen=999)
+#a <- quantile(test, c(.05, .95))
+#b <- sort_g[sort_g < quantile(sort_g, .95) & sort_g > quantile(sort_g,.05) ]
+#options(scipen=999)
 #gdens$x[max(b)]
 #gdens$x[which.max(b)]
+
 plot(density(G))
 abline(v=equal_tail[1], col = 'red')
 abline(v=equal_tail[2], col = 'red')
-abline(v=hdi[1])
-abline(v=hdi[2])
+abline(v=low)
+abline(v=hi)
 ```
 
 ## 3) von Mises distribution
@@ -138,7 +158,10 @@ posterior <- c()
 for(x in 1:length(k_values)){
   posterior[x] <- posteriorfunc(k_values[x]) #function defaults to radians data if not supplied
 }
-plot(x= k_values, y = posterior)
+
+plot(x= k_values/10, y = posterior/sum(posterior))
+#this plots from 0-1 and the area under curve is now normalized to 1
+#sum(posterior/sum(posterior))
 #k_values[which.max(posterior)]
 ```
 

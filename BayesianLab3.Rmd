@@ -1,0 +1,18 @@
+---
+title: "BayesianLab3"
+author: "David Nyberg"
+date: "5/3/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1
+
+```{r}
+rainfall <- read.table("rainfall.dat.txt")
+#implement gibbs sampler
+```
+
