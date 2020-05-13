@@ -125,10 +125,10 @@ ylim <- c(0,2*max(hist(x)$density))
 
 
 for (k in 1:nIter){
-  message(paste('Iteration number:',k))
+  #message(paste('Iteration number:',k))
   alloc <- S2alloc(S) # Just a function that converts between different representations of the group allocations
   nAlloc <- colSums(S)
-  print(nAlloc)
+  #print(nAlloc)
   # Update components probabilities
   pi <- rDirichlet(alpha + nAlloc)
   
@@ -157,9 +157,9 @@ for (k in 1:nIter){
   }
   
   # Printing the fitted density against data histogram
-  if (plotFit && (k%%1 ==0)){
+  if (plotFit && (k%%1 ==0100){
     effIterCount <- effIterCount + 1
-    hist(x, breaks = 20, freq = FALSE, xlim = c(xGridMin,xGridMax), main = paste("Iteration number",k), ylim = ylim)
+    #hist(x, breaks = 20, freq = FALSE, xlim = c(xGridMin,xGridMax), main = paste("Iteration number",k), ylim = ylim)
     mixDens <- rep(0,length(xGrid))
     components <- c()
     for (j in 1:nComp){
@@ -192,6 +192,89 @@ legend("topright", box.lty = 1, legend = c("Data histogram","Mixture density","N
 plot(density(rainfall))
 lines(xGrid,mixDensMean, type = "l", col = "red")
 lines(xGrid,dnorm(xGrid,mean(gibbsDraws[,1]), apply(x,2,sd)), col = 'blue')
+```
+## Assignemnt 2. Metropolis Random Walk for Poisson regression.
+```{r}
+#2a
+ebay <- read.table("eBayNumberOfBidderData.dat.txt", header = TRUE)
+summary(ebay)
+
+glm_model <- glm(nBids ~ . -Const, family= "poisson", data = ebay)
+summary(glm_model)
+```
+```{r}
+#2b
+library(mvtnorm)
+X <- as.matrix(ebay[,-c(1)])
+mean_vector <- c(0,0,0,0,0,0,0,0,0)
+sigma <- 100 * solve(t(X) %*% X)
+y <- ebay$nBids
+a <- rmvnorm(100, mean_vector, 100 * solve(t(X) %*% X))
+hist(a,100)
+
+#lecture 6
+LogPostPoisson <- function(betaVect,y,X,mu,Sigma){
+  nPara <- length(betaVect)
+  linPred <- betaVect %*% t(X)
+                                      
+  logLik <- sum(linPred*y - exp(linPred))
+  if (abs(logLik) == Inf) logLik = -20000; # Likelihood is not finite, stear the optimizer away from here!
+  logPrior <- dmvnorm(betaVect, matrix(0,nPara,1), Sigma, log=TRUE)
+  #returning posterior
+  return(logLik + logPrior)
+}
+
+initVal <- as.vector(rep(0,dim(X)[2]))
+OptimResults <- optim(initVal,LogPostPoisson,gr=NULL,y,X,mean_vector,sigma,method=c("BFGS"),control=list(fnscale=-1),hessian=TRUE)
+
+OptimResults$par
+OptimResults$hessian
+glm_model$coefficients
+```
+```{r}
+j_inv <- -solve(OptimResults$hessian)
+betas <- OptimResults$par
+draws <- rmvnorm(10000, betas, j_inv)
+hist(draws[,1], 100)
+```
+
+```{r}
+#E = our inverse hessian - j_inv
+#c is tuning parameter 
+rwm_sampler <- function(theta, iterations, Eps, c, LogPostFunc,...) {
+  thetaVec = c()
+  for (i in 1:iterations){
+    #sample proposal
+    theta_p <- rmvnorm(1, theta, c*Eps)
+    
+    #Metropolis acceptance probability , from 'how to code rwm'
+    #this means the posterior function used must return Logs as this is a exponenent trick
+    alpha = min(1, exp(LogPostFunc(theta,...) - LogPostFunc(theta_p,...)))
+    random = runif(1)
+    
+    #with probability alpha, set theta(i) = theta_p
+    print(alpha)
+    if(alpha < random){
+      #when we start to converge this will almost always be false meaning we keep taking the same previous values
+      #instead of changing the theta vals, resulting in convergence 
+      theta = theta_p
+    }
+    thetaVec = rbind(thetaVec, theta)
+  }
+  return(thetaVec)
+}
+
+res = rwm_sampler(mean_vector, 2000, j_inv, 0.1, LogPostPoisson, y, X, mean_vector, sigma)
+for (x in 1:9){
+  plot(res[,x], type = 'l')
+}
+
+x <- c(1,1,1,1,0,0,0,1,.5)
+
+betas <- res[1000,]
+a <- rpois(5000, exp(t(x) * betas))
+
+barplot(table(a))
 ```
 
 
