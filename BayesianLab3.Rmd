@@ -9,13 +9,15 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## 1
-```{r}
+## 1 Analyzing rainfall data
+
+1a) 
+```{r echo=FALSE}
 rainfall <- read.table("rainfall.dat.txt")
 rainfall <- rainfall$V1
 ```
 
-```{r}
+```{r echo=FALSE}
 #priors
 u_0 <- 30
 t_sq_0 <- 30
@@ -241,37 +243,39 @@ hist(draws[,1], 100)
 ```{r}
 #E = our inverse hessian - j_inv
 #c is tuning parameter 
-rwm_sampler <- function(theta, iterations, Eps, c, LogPostFunc,...) {
-  thetaVec = c()
+rwm_sampler <- function(theta_old, iterations, Eps, c, LogPostFunc,...) {
+  thetas = c()
   for (i in 1:iterations){
     #sample proposal
-    theta_p <- rmvnorm(1, theta, c*Eps)
+    theta_p <- rmvnorm(1, theta_old, c*Eps)
     
     #Metropolis acceptance probability , from 'how to code rwm'
     #this means the posterior function used must return Logs as this is a exponenent trick
-    alpha = min(1, exp(LogPostFunc(theta,...) - LogPostFunc(theta_p,...)))
+    alpha = min(1, exp(LogPostFunc(theta_p,...) - LogPostFunc(theta_old,...)))
     random = runif(1)
     
     #with probability alpha, set theta(i) = theta_p
-    print(alpha)
-    if(alpha < random){
+    #print(alpha)
+    if(alpha > random){
       #when we start to converge this will almost always be false meaning we keep taking the same previous values
       #instead of changing the theta vals, resulting in convergence 
-      theta = theta_p
+      theta_old = theta_p
     }
-    thetaVec = rbind(thetaVec, theta)
+    thetas = rbind(thetas, theta_old)
   }
-  return(thetaVec)
+  return(thetas)
 }
 
-res = rwm_sampler(mean_vector, 2000, j_inv, 0.1, LogPostPoisson, y, X, mean_vector, sigma)
+res = rwm_sampler(mean_vector, 5000, j_inv, 0.1, LogPostPoisson, y, X, mean_vector, sigma)
 for (x in 1:9){
   plot(res[,x], type = 'l')
 }
+a <- cumsum(res[,5]) / seq_along(res[,5])
+plot(a)
 
 x <- c(1,1,1,1,0,0,0,1,.5)
 
-betas <- res[1000,]
+betas <- res[4000,]
 a <- rpois(5000, exp(t(x) * betas))
 
 barplot(table(a))

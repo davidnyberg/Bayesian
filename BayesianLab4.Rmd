@@ -1,0 +1,112 @@
+---
+title: "BayesianLab4"
+author: "David Nyberg"
+date: "5/14/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Assignment 1: Time series modeling in Stan
+Using rstan to simulate from AR process
+
+What effect does Phi have on the results?
+
+```{r}
+library(rstan)
+
+u <- 10
+sigma2 <- 2
+phi <- 0.5
+t <- 200
+
+simulateAR <- function(u, sigma, t, phi){
+  x <- u
+  x_vector <- c()
+  for(i in 1:t) {
+    error <- rnorm(1, 0, sqrt(sigma))
+    x_t <- u + phi*(x - u) + error
+    x <- x_t
+    x_vector[i] = x_t
+  }
+  #return vector x1:t
+  return(x_vector)
+}
+test_result <- simulateAR(u, sigma2, t, phi)
+plot(test_result, type = 'l')
+
+```
+1b)
+```{r}
+Xt <- simulateAR(u, sigma2, t, 0.3)
+Yt <- simulateAR(u, sigma2, t, 0.95)
+
+#STAN AR Model from
+#https://mc-stan.org/docs/2_21/stan-users-guide/autoregressive-section.html
+my_model <- 'data {
+  int<lower=0> N;
+  vector[N] y;
+}
+parameters {
+  real u;
+  real<lower=-1,upper=1> phi;
+  real<lower=0> sigma;
+}
+model {
+  for (n in 2:N)
+    y[n] ~ normal(u + phi * (y[n-1] - u), sqrt(sigma));
+}'
+
+my_data <- (list(N = t, y = Yt))
+
+results <- stan(model_code = my_model, data = my_data, iter = 2000, warmup = 1000)
+summary(results)
+
+results@.MISC$summary$ess
+
+res <- extract(results)
+hist(res$u, 50)
+quantile(res$u, c(0.025, 0.95))
+
+plot(res$u, res$phi)
+plot(res$u, res$phi)
+traceplot(results)
+```
+
+```{r}
+library(rstan)
+campy <- read.table("campy.dat.txt", header = TRUE)
+campy$c
+
+model <- 'data {
+  int<lower=0> N;
+  int c[N];
+}
+parameters {
+  real y[N];
+  real u;
+  real<lower=-1,upper=1> phi;
+  real<lower=0> sigma;
+}
+model {
+  u ~ normal(10, 10);
+  sigma ~ scaled_inv_chi_square(1,2);
+  phi ~ uniform(-1, 1);
+  
+  for (n in 2:N) {
+      y[n] ~ normal(u + phi * (y[n-1] - u), sqrt(sigma));
+      c[n] ~ poisson(exp(y[n]));
+  }
+}'
+data <- list(N = length(campy$c), y = campy$c)
+new_result <- stan(model_code = model, data = data, iter = 2000, warmup = 1000)
+
+n <- extract(new_result)
+summary(n)
+```
+
+
+
