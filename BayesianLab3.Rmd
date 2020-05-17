@@ -11,27 +11,29 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## 1 Analyzing rainfall data
 
-1a) 
+1a) With the help of code from Mattias the gibbs sampler was implemented with the full conditional posteriors given in lecture 7. Even though in this problem the variance was not known, you can assumed it was and used the definitions of the prior variables as if the variance was known. The plots show the trajectory of the markov chains showing good convergence of Mu and Sigma squared.
+
 ```{r echo=FALSE}
 rainfall <- read.table("rainfall.dat.txt")
 rainfall <- rainfall$V1
 ```
 
 ```{r echo=FALSE}
-#priors
+#priors/needed variables
 u_0 <- 30
 t_sq_0 <- 30
 sigma_sq_0 <- 30
 v_0 <- 5
+sigma_2_draw <- 30
 
 n <- length(rainfall)
-#used in first iteration of for loop
-w <- (n/sigma_sq_0) / (n/sigma_sq_0) + (1/t_sq_0)
-u_n <- w * mean(rainfall) + (1-w)*u_0
+v_n <- n + u_0
+
+#w <- (n/sigma_sq_0) / (n/sigma_sq_0) + (1/t_sq_0)
+#u_n <- w * mean(rainfall) + (1-w)*u_0
 
 inv_t_sq_n <- n/sigma_sq_0 + 1/t_sq_0
 t_sq_n <- 1/inv_t_sq_n
-v_n <- n + u_0
 n_draws <- 2000 # Number of draws
 
 #sigma_sample <- (n*t_sq_0)/rchisq(10000, n)
@@ -54,10 +56,19 @@ for (i in 1:n_draws){
 }
 
 #from mattias
-a <- cumsum(gibbsDraws[,1])/seq(1,n_draws)
-plot(1:n_draws, a, type='l')
+sum_of_draws_mu <- cumsum(gibbsDraws[,1])/seq(1,n_draws)
+sum_of_draws_s <- cumsum(gibbsDraws[,2])/seq(1,n_draws)
+#plotting trajectory
+plot(1:n_draws, sum_of_draws_mu, type='l', main = "Mu")
+plot(1:n_draws, sum_of_draws_s, type='l', main = "Sigma Squared")
+#plot(gibbsDraws[,1], type = 'l')
+
+#hist(gibbsDraws[,2],30)
 ```
-```{r}
+
+b) Using a mixture of normal models, that is, two different normal distribuitions that are combined to help get a better estimate than just one normal distribution could. The hyper parameters I changed are the number of mixture components to 2, and prior mu to 30. 
+
+```{r echo = FALSE}
 # Estimating a simple mixture of normals
 # Author: Mattias Villani, IDA, Linkoping University. http://mattiasvillani.com
 
@@ -70,7 +81,7 @@ nComp <- 2    # Number of mixture components
 
 # Prior options
 alpha <- 10*rep(1,nComp) # Dirichlet(alpha)
-muPrior <- rep(0,nComp) # Prior mean of mu
+muPrior <- rep(30,nComp) # Prior mean of mu
 tau2Prior <- rep(10,nComp) # Prior std of mu
 sigma2_0 <- rep(var(x),nComp) # s20 (best guess of sigma2)
 nu0 <- rep(4,nComp) # degrees of freedom for prior on sigma2
@@ -123,7 +134,7 @@ xGridMin <- min(xGrid)
 xGridMax <- max(xGrid)
 mixDensMean <- rep(0,length(xGrid))
 effIterCount <- 0
-ylim <- c(0,2*max(hist(x)$density))
+#ylim <- c(0,2*max(hist(x)$density))
 
 
 for (k in 1:nIter){
@@ -159,24 +170,25 @@ for (k in 1:nIter){
   }
   
   # Printing the fitted density against data histogram
-  if (plotFit && (k%%1 ==0100){
+ if (plotFit && (k%%1 == 0)) {
     effIterCount <- effIterCount + 1
-    #hist(x, breaks = 20, freq = FALSE, xlim = c(xGridMin,xGridMax), main = paste("Iteration number",k), ylim = ylim)
+   # hist(x, breaks = 20, freq = FALSE, xlim = c(xGridMin,xGridMax), main = paste("Iteration number",k), ylim = ylim)
     mixDens <- rep(0,length(xGrid))
     components <- c()
     for (j in 1:nComp){
       compDens <- dnorm(xGrid,mu[j],sd = sqrt(sigma2[j]))
       mixDens <- mixDens + pi[j]*compDens
-      lines(xGrid, compDens, type = "l", lwd = 2, col = lineColors[j])
+      #lines(xGrid, compDens, type = "l", lwd = 2, col = lineColors[j])
       components[j] <- paste("Component ",j)
     }
     mixDensMean <- ((effIterCount-1)*mixDensMean + mixDens)/effIterCount
     
-    lines(xGrid, mixDens, type = "l", lty = 2, lwd = 3, col = 'red')
-    legend("topleft", box.lty = 1, legend = c("Data histogram",components, 'Mixture'), 
-           col = c("black",lineColors[1:nComp], 'red'), lwd = 2)
-    Sys.sleep(sleepTime)
+    #lines(xGrid, mixDens, type = "l", lty = 2, lwd = 3, col = 'red')
+    #legend("topleft", box.lty = 1, legend = c("Data histogram",components, 'Mixture'), 
+         #  col = c("black",lineColors[1:nComp], 'red'), lwd = 2)
+    #Sys.sleep(sleepTime)
   }
+  
   
 }
 
@@ -185,26 +197,33 @@ lines(xGrid, mixDensMean, type = "l", lwd = 2, lty = 4, col = "red")
 lines(xGrid, dnorm(xGrid, mean = mean(x), sd = apply(x,2,sd)), type = "l", lwd = 2, col = "blue")
 legend("topright", box.lty = 1, legend = c("Data histogram","Mixture density","Normal density"), col=c("black","red","blue"), lwd = 2)
 
+
 #########################    Helper functions    ##############################################
 ```
 
+c) Plotting the density of the data, density from gibbs, and mixture of normal density, the plot below shows all three curves. 
 
 ```{r}
 #c
 plot(density(rainfall))
 lines(xGrid,mixDensMean, type = "l", col = "red")
 lines(xGrid,dnorm(xGrid,mean(gibbsDraws[,1]), apply(x,2,sd)), col = 'blue')
+legend("topright", box.lty = 1, legend = c("Data density","Mixture density","Gibbs samples"), col=c("black","red","blue"), lwd = 2)
 ```
-## Assignemnt 2. Metropolis Random Walk for Poisson regression.
-```{r}
+
+## Assignment 2. Metropolis Random Walk for Poisson regression.
+
+a) Using glm to evaluate the ebay data it can be seen in the model summary that VerifyID, Sealed, LogBook, and MinBidShare are the significant covariates. MajBlem can be seen as significant, but less significant then the others. 
+
+```{r echo=FALSE}
 #2a
 ebay <- read.table("eBayNumberOfBidderData.dat.txt", header = TRUE)
-summary(ebay)
+#summary(ebay)
 
 glm_model <- glm(nBids ~ . -Const, family= "poisson", data = ebay)
-summary(glm_model)
+#summary(glm_model)
 ```
-```{r}
+```{r echo=FALSE}
 #2b
 library(mvtnorm)
 X <- as.matrix(ebay[,-c(1)])
@@ -212,7 +231,7 @@ mean_vector <- c(0,0,0,0,0,0,0,0,0)
 sigma <- 100 * solve(t(X) %*% X)
 y <- ebay$nBids
 a <- rmvnorm(100, mean_vector, 100 * solve(t(X) %*% X))
-hist(a,100)
+#hist(a,100)
 
 #lecture 6
 LogPostPoisson <- function(betaVect,y,X,mu,Sigma){
@@ -229,19 +248,27 @@ LogPostPoisson <- function(betaVect,y,X,mu,Sigma){
 initVal <- as.vector(rep(0,dim(X)[2]))
 OptimResults <- optim(initVal,LogPostPoisson,gr=NULL,y,X,mean_vector,sigma,method=c("BFGS"),control=list(fnscale=-1),hessian=TRUE)
 
-OptimResults$par
-OptimResults$hessian
-glm_model$coefficients
+#OptimResults$par
+#OptimResults$hessian
+#glm_model$coefficients
 ```
-```{r}
+
+Here are the Beta values for each of the covariates for the Ebay data.
+
+```{r echo=FALSE}
 j_inv <- -solve(OptimResults$hessian)
 betas <- OptimResults$par
 draws <- rmvnorm(10000, betas, j_inv)
-hist(draws[,1], 100)
+print(betas)
+#hist(draws[,1], 100)
 ```
 
-```{r}
-#E = our inverse hessian - j_inv
+b/c) Sampling with RWM, below are the plots for each of the betas in order. When comparing these to the above covariates it is clear that the RWM converges to the same values.
+
+- These plots are useful as they still show the 'spread/variance' in the data which you could see in a histogram and it also shows that it is converging which you could calculate with a cumulative sum trajectory plot. A plot like this combines all this information into a nice one view result.
+
+```{r echo=FALSE}
+#Eps = inverse hessian - j_inv
 #c is tuning parameter 
 rwm_sampler <- function(theta_old, iterations, Eps, c, LogPostFunc,...) {
   thetas = c()
@@ -251,34 +278,48 @@ rwm_sampler <- function(theta_old, iterations, Eps, c, LogPostFunc,...) {
     
     #Metropolis acceptance probability , from 'how to code rwm'
     #this means the posterior function used must return Logs as this is a exponenent trick
-    alpha = min(1, exp(LogPostFunc(theta_p,...) - LogPostFunc(theta_old,...)))
-    random = runif(1)
+    alpha <- min(1, exp(LogPostFunc(theta_p,...) - LogPostFunc(theta_old,...)))
+    #random # between 0-1
+    random <- runif(1)
     
     #with probability alpha, set theta(i) = theta_p
     #print(alpha)
     if(alpha > random){
       #when we start to converge this will almost always be false meaning we keep taking the same previous values
       #instead of changing the theta vals, resulting in convergence 
-      theta_old = theta_p
+      theta_old <- theta_p
     }
     thetas = rbind(thetas, theta_old)
   }
   return(thetas)
 }
 
-res = rwm_sampler(mean_vector, 5000, j_inv, 0.1, LogPostPoisson, y, X, mean_vector, sigma)
+sample <- rwm_sampler(mean_vector, 5000, j_inv, 0.1, LogPostPoisson, y, X, mean_vector, sigma)
+par(mfrow=c(2,2))
 for (x in 1:9){
-  plot(res[,x], type = 'l')
+  plot(sample[,x], type = 'l', main = x)
 }
-a <- cumsum(res[,5]) / seq_along(res[,5])
-plot(a)
-
-x <- c(1,1,1,1,0,0,0,1,.5)
-
-betas <- res[4000,]
-a <- rpois(5000, exp(t(x) * betas))
-
-barplot(table(a))
+#a <- cumsum(sample[,5]) / seq_along(sample[,5])
+#plot(a)
 ```
 
+d) Using the previous MCMC draws it is easy to predict how many bidders will be on this new auction. Setting up the vector of coefficients it can be plugged into the original Poisson model to draw new samples and evaluating the resulting draws to see probabilities for how many bidders there will be for this auction. 
 
+The barplot shows this result, calculating probability for zero bidders the result is printed below.
+
+```{r echo=FALSE}
+x <- c(1,1,1,1,0,0,0,1,.5)
+r <- c()
+for (i in 1:9){
+  #mean of each column of the sample matrix, aka each beta value
+  r[i] <- mean(sample[,i])
+}
+iters <- 5000
+a <- rpois(iters, exp(t(x) * r))
+b <- ifelse(a == 0, 1, 0)
+print(paste("Probability of having zero bidders is:", round(sum(b == 1) / iters, 2)))
+barplot(table(a), xlab = "# of bidders", main = "Distribution of bidders in new auction")
+```
+```{r ref.label=knitr::all_labels(), echo = T, eval=F}
+
+```
