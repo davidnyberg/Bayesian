@@ -35,6 +35,13 @@ simulateAR <- function(u, sigma, t, phi){
   #return vector x1:t
   return(x_vector)
 }
+
+s <- seq(-1,1,0.2)
+plot(simulateAR(u, sigma2, t, -1), type = 'l')
+plot(simulateAR(u, sigma2, t, 0), type = 'l')
+plot(simulateAR(u, sigma2, t, 1), type = 'l')
+
+
 test_result <- simulateAR(u, sigma2, t, phi)
 plot(test_result, type = 'l')
 
@@ -60,26 +67,36 @@ model {
     y[n] ~ normal(u + phi * (y[n-1] - u), sqrt(sigma));
 }'
 
-my_data <- (list(N = t, y = Yt))
+x_data <- (list(N = t, y = Xt))
+y_data <- (list(N = t, y = Yt))
 
-results <- stan(model_code = my_model, data = my_data, iter = 2000, warmup = 1000)
-summary(results)
 
-results@.MISC$summary$ess
+x_results <- stan(model_code = my_model, data = x_data, iter = 3000, warmup = 1000)
+y_results <- stan(model_code = my_model, data = y_data, iter = 3000, warmup = 1000)
 
-res <- extract(results)
+#summary(results)
+#results@.MISC$summary$ess
+
+x_res <- extract(x_results)
+y_res <- extract(y_results)
+quantile(x_res$u, c(0.025, 0.95))
+quantile(y_res$u, c(0.025, 0.95))
+
+
+
+
+par(mfrow = c(3,3))
 hist(res$u, 50)
-quantile(res$u, c(0.025, 0.95))
 
-plot(res$u, res$phi)
-plot(res$u, res$phi)
-traceplot(results)
+#plot(res$u, res$phi)
+#plot(res$u, res$phi)
+#traceplot(results)
 ```
 
 ```{r}
 library(rstan)
 campy <- read.table("campy.dat.txt", header = TRUE)
-campy$c
+#campy$c
 
 model <- 'data {
   int<lower=0> N;
@@ -92,8 +109,8 @@ parameters {
   real<lower=0> sigma;
 }
 model {
-  u ~ normal(10, 10);
-  sigma ~ scaled_inv_chi_square(1,2);
+  u ~ normal(10, 1);
+  sigma ~ scaled_inv_chi_square(140, 0.00001);
   phi ~ uniform(-1, 1);
   
   for (n in 2:N) {
@@ -101,11 +118,24 @@ model {
       c[n] ~ poisson(exp(y[n]));
   }
 }'
-data <- list(N = length(campy$c), y = campy$c)
-new_result <- stan(model_code = model, data = data, iter = 2000, warmup = 1000)
 
+data <- list(N = length(campy$c), c = campy$c)
+new_result <- stan(model_code = model, data = data, iter = 2000, warmup = 1000)
 n <- extract(new_result)
-summary(n)
+#traceplot(new_result)
+summary(new_result)
+#means <- colMeans(n$y)
+#quart <- quantile(n$y[1:140], c(0.025,0.975))
+
+means <- summary(new_result)$summary[,"mean"]
+a <- summary(new_result)$summary[,"2.5%"]
+b <- summary(new_result)$summary[,"97.5%"]
+
+plot(campy$c)
+lines(exp(means), col = 'red')
+lines(exp(a))
+lines(exp(b))
+
 ```
 
 
