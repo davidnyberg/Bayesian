@@ -5,49 +5,46 @@ date: "5/14/2020"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 
 ## Assignment 1: Time series modeling in Stan
-Using rstan to simulate from AR process
 
-What effect does Phi have on the results?
+The value Phi affects how much weight the previous value should be given. For example a Phi value of 0 would mean the whole term (X(t-1) - u) will always be zero therefore resulting in the simulated values are always around the mean +/- the random error which can be seen the first plot. The other plots show Phi as 1 and -1.
 
-```{r}
+```{r echo=FALSE}
 library(rstan)
 
 u <- 10
 sigma2 <- 2
-phi <- 0.5
 t <- 200
 
 simulateAR <- function(u, sigma, t, phi){
+  #start at x1 = u
   x <- u
   x_vector <- c()
   for(i in 1:t) {
     error <- rnorm(1, 0, sqrt(sigma))
+    
+    #the AR process itself
     x_t <- u + phi*(x - u) + error
-    x <- x_t
+    
+    #set next iteration x val to previous value, and save this value
     x_vector[i] = x_t
+    x <- x_t
   }
-  #return vector x1:t
+  #return vector x1:t aka all the simulated draws
   return(x_vector)
 }
 
-s <- seq(-1,1,0.2)
-plot(simulateAR(u, sigma2, t, -1), type = 'l')
-plot(simulateAR(u, sigma2, t, 0), type = 'l')
-plot(simulateAR(u, sigma2, t, 1), type = 'l')
-
-
-test_result <- simulateAR(u, sigma2, t, phi)
-plot(test_result, type = 'l')
-
+plot(simulateAR(u, sigma2, t, 0), type = 'l', main = "Phi = 0", ylab = "Simulation value")
+plot(simulateAR(u, sigma2, t, -1), type = 'l', main = "Phi = -1", ylab = "Simulation value")
+plot(simulateAR(u, sigma2, t, 1), type = 'l', main = "Phi = 1", ylab = "Simulation value")
 ```
-1b)
-```{r}
+
+1b) After simulating the two AR processes with Phi = 0.3 and 0.95 and estimating their parameters with MCMC the results are fairly good for both. looking at further the results its clear that the Phi=0.3 model performed better. Printed below are all the estimated values for each model.
+
+
+
+```{r echo=FALSE}
 Xt <- simulateAR(u, sigma2, t, 0.3)
 Yt <- simulateAR(u, sigma2, t, 0.95)
 
@@ -59,7 +56,7 @@ my_model <- 'data {
 }
 parameters {
   real u;
-  real<lower=-1,upper=1> phi;
+  real phi;
   real<lower=0> sigma;
 }
 model {
@@ -71,29 +68,42 @@ x_data <- (list(N = t, y = Xt))
 y_data <- (list(N = t, y = Yt))
 
 
-x_results <- stan(model_code = my_model, data = x_data, iter = 3000, warmup = 1000)
-y_results <- stan(model_code = my_model, data = y_data, iter = 3000, warmup = 1000)
+x_results <- stan(model_code = my_model, data = x_data)
+y_results <- stan(model_code = my_model, data = y_data)
+```
+```{r echo=FALSE}
+#https://cran.r-project.org/web/packages/rstan/vignettes/stanfit-objects.html
 
-#summary(results)
-#results@.MISC$summary$ess
+x_summary <- summary(x_results, pars = c("u", "phi", "sigma"),
+                     probs = c(0.025, 0.975))$summary
+#-7 removes Rhat column
+print("Summary for Phi = 0.30", quote = FALSE)
+print(x_summary[,-7], digits = 3)
 
-x_res <- extract(x_results)
-y_res <- extract(y_results)
-quantile(x_res$u, c(0.025, 0.95))
-quantile(y_res$u, c(0.025, 0.95))
+y_summary <- summary(y_results, pars = c("u", "phi", "sigma"),
+                     probs = c(0.025, 0.975))$summary
+#-7 removes Rhat column
+print("Summary for Phi = 0.95", quote = FALSE)
+print(y_summary[,-7], digits = 3)
+```
+Below are the plots for the joint posteriors of Mu and Phi for both models. The convergence is better in the Phi=0.30 model because the mean can be clearly seen as the middle of the cluster around Mu=9.9 and phi=0.3. The joint posterior for Phi=0.95 shows a very dense spread in the middle but has very large outliers seen by values on the X-scale.
 
+```{r echo=FALSE}
+x_extract <- extract(x_results)
+y_extract <- extract(y_results)
 
+#par(mfrow = c(3,3))
+#hist(y_extract$u, 50)
 
+#plot the join posteriors
+plot(y_extract$u, y_extract$phi, main = "Joint Posterior of Mu and Phi=0.95")
+plot(x_extract$u, x_extract$phi, main = "Joint Posterior of Mu and Phi=0.30")
 
-par(mfrow = c(3,3))
-hist(res$u, 50)
-
-#plot(res$u, res$phi)
-#plot(res$u, res$phi)
-#traceplot(results)
 ```
 
-```{r}
+c) Below is a plot of the posterior mean in red and 95% confidence interval of this mean in black all plotted on the campy data set
+
+```{r echo=FALSE}
 library(rstan)
 campy <- read.table("campy.dat.txt", header = TRUE)
 #campy$c
@@ -105,12 +115,12 @@ model <- 'data {
 parameters {
   real y[N];
   real u;
-  real<lower=-1,upper=1> phi;
+  real phi;
   real<lower=0> sigma;
 }
 model {
   u ~ normal(10, 1);
-  sigma ~ scaled_inv_chi_square(140, 0.00001);
+  sigma ~ scaled_inv_chi_square(1, 1);
   phi ~ uniform(-1, 1);
   
   for (n in 2:N) {
@@ -120,23 +130,72 @@ model {
 }'
 
 data <- list(N = length(campy$c), c = campy$c)
-new_result <- stan(model_code = model, data = data, iter = 2000, warmup = 1000)
-n <- extract(new_result)
-#traceplot(new_result)
-summary(new_result)
-#means <- colMeans(n$y)
-#quart <- quantile(n$y[1:140], c(0.025,0.975))
+new_result <- stan(model_code = model, data = data)
+#n <- extract(new_result)
 
-means <- summary(new_result)$summary[,"mean"]
-a <- summary(new_result)$summary[,"2.5%"]
-b <- summary(new_result)$summary[,"97.5%"]
+#last 4 rows are not wanted
+means <- summary(new_result)$summary[,"mean"][1:140]
+low_bound <- summary(new_result)$summary[,"2.5%"][1:140]
+up_bound <- summary(new_result)$summary[,"97.5%"][1:140]
+
+#checking what last 4 rows were to fix plot
+#options(max.print=1500)
+#summary(new_result)$summary
 
 plot(campy$c)
 lines(exp(means), col = 'red')
-lines(exp(a))
-lines(exp(b))
-
+lines(exp(low_bound))
+lines(exp(up_bound))
 ```
 
+d) Changing the parameters in the prior for sigma squared the degrees of freedom are set to 140 (length of data) and the scaling parameter is set to a small value of 0.05 being informative to the process that the error increments will be very small. Now the estimate is very smooth.
 
+```{r echo=FALSE}
+library(rstan)
+campy <- read.table("campy.dat.txt", header = TRUE)
+#campy$c
+
+model <- 'data {
+  int<lower=0> N;
+  int c[N];
+}
+parameters {
+  real y[N];
+  real u;
+  real phi;
+  real<lower=0> sigma;
+}
+model {
+  u ~ normal(10, 1);
+  sigma ~ scaled_inv_chi_square(140, 0.05);
+  phi ~ uniform(-1, 1);
+  
+  for (n in 2:N) {
+      y[n] ~ normal(u + phi * (y[n-1] - u), sqrt(sigma));
+      c[n] ~ poisson(exp(y[n]));
+  }
+}'
+
+data <- list(N = length(campy$c), c = campy$c)
+new_result <- stan(model_code = model, data = data)
+#n <- extract(new_result)
+
+#last 4 rows are not wanted
+means <- summary(new_result)$summary[,"mean"][1:140]
+low_bound <- summary(new_result)$summary[,"2.5%"][1:140]
+up_bound <- summary(new_result)$summary[,"97.5%"][1:140]
+
+#checking what last 4 rows were to fix plot
+#options(max.print=1500)
+#summary(new_result)$summary
+
+plot(campy$c)
+lines(exp(means), col = 'red')
+lines(exp(low_bound))
+lines(exp(up_bound))
+```
+
+```{r ref.label=knitr::all_labels(), echo = T, eval=F}
+
+```
 
